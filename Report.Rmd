@@ -1,0 +1,501 @@
+---
+title: "Nietoperz z Wuhan"
+author: "Jerzy Łukaszewicz, Marek Szydłowski"
+output: 
+    html_document:
+        toc: true
+        toc_float:
+            collapsed: false
+            smooth_scroll: false
+        
+---
+
+
+<center>
+
+![](logoPP.jpg){width=50%}
+
+</center>
+
+
+
+```{r setup, include=FALSE,echo=FALSE}
+knitr::opts_chunk$set(dev.args = list(png = list(type = "cairo")))
+library(plyr)
+library(dplyr)
+library(Cairo)
+library(ggplot2)
+library(ggExtra)
+library(grid)
+library(gridExtra)
+library(viridis)
+library(hrbrthemes)
+library(tidyr)
+library(ggplot2)
+library(reshape2)
+library(gtable)
+library(plotly)
+library(hexbin)
+dane = read.csv("reduced.csv", sep=",")
+
+men = subset(dane, gender==1)
+women = subset(dane, gender==2)
+
+men_dead = subset(men, outcome == 1)
+men_alive = subset(men, outcome == 0)
+women_dead = subset(women, outcome == 1)
+women_alive = subset(women, outcome == 0)
+```
+
+## Executive summary
+
+This report provides an information about patients from Wuhan infected with COVID-19 between 2020-01-10 19:45:00 and the 2020-02-18. The data contains medical examinations of patients aged from 18 up to 95. Thanks to visualizations we are able to distinguish how the death/recovery ratio look like. In fact it is easy to observe that most of dying people occurs between 60-75, and many people recover in age 20-50. This might be caused by various factors which are included in graphs. Those factors are most likely correlated with old age, and are in most cases far from norm values.
+
+
+
+## Infected people age distribution
+
+At the figure presented below we can notice that in both male and female cases, the most frequent patients that died due to COVID-19 were in advanced age - with an average above 60 years. 
+For the recovered patients in both male and female cases the count is more or less uniformly distributed in all age range from 20 to 70.
+
+```{r echo = FALSE}
+plot = ggplot()+
+    geom_histogram(data = men_alive, aes(x = age, y = ..count..), fill="#00afff",alpha=0.5,binwidth=3,color="#00afff")+
+    geom_histogram(data = men_dead, aes(x = age, y = -..count..), fill="#ff3921" ,alpha=0.5,binwidth=3,color="#ff3921")+
+    theme_bw()+
+    geom_label(aes(x = 85,y = -18, label="- DIED"), color="#ff3921")+
+    geom_label(aes(x = 33,y = 12, label="+ RECOVERED"), color="#00afff")+
+    scale_x_continuous("Age",breaks = c(20,40,60,80))+
+    ggtitle("MEN")+
+    scale_y_continuous("The number of patients",limits = c(-18,12),breaks = c(-15,-10,-5,0,5,10))+
+    theme(axis.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=16))
+
+plot2 = ggplot()+
+    geom_histogram(data = women_alive, aes(x = age, y = ..count..), fill="#00afff",alpha=0.5,binwidth=3,color="#00afff")+
+    geom_histogram(data = women_dead, aes(x = age, y = -..count..), fill="#ff3921" ,alpha=0.5,binwidth=3,color="#ff3921")+
+    geom_label(aes(x = 87,y = -10, label="- DIED"), color="#ff3921")+
+    geom_label(aes(x = 33,y = 12, label="+ RECOVERED"), color="#00afff")+
+    scale_x_continuous("Age",breaks = c(20,40,60,80))+
+    theme_bw()+
+    ggtitle("WOMEN")+
+    scale_y_continuous("",limits = c(-18,12),breaks = c(-15,-10,-5,0,5,10))+
+    theme(
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),)
+
+grid.arrange(plot, plot2, ncol=2)
+```
+
+## Days to death/recovery 
+
+At the figure presented below we can see that the mortality rate is highly correlated with the number of days elapsed till the patient was diagnosed in the hospital. The critical point at which it highly drops is around 15 days of being infected - after this time, the recovery chance highly rises. We can also see that the average time it takes for the patient to die is below 10 days while the recovery time is around 15 days.
+
+
+```{r echo=FALSE}
+data = read.csv("clean_data.csv",sep=",")
+deaths = select(data, "PATIENT_ID","outcome","illness_period")
+deaths = unique(deaths)
+
+ded = deaths %>%
+    filter(outcome == 1) %>%
+    count(illness_period) %>%
+    rename(Days = n)
+
+p1 = ggplot(
+    ded, aes(x=illness_period, y=Days)
+) + geom_point(alpha = 0.2) + stat_smooth(formula = y ~ x,
+    geom = 'area', method = 'loess', span = 1/2,
+    alpha = 1/2, fill = "#ff3921")+theme_bw()+
+    scale_x_continuous("Days",expand = c(0, 0))+
+    labs(title = "Death after X days")+
+    scale_y_continuous("The number of patients",expand = c(0, 0),limits = c(0,20))+theme_bw()+
+    theme(axis.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=16))
+
+
+
+liv = deaths %>%
+    filter(outcome == 0) %>%
+    count(illness_period) %>%
+    rename(Days = n)
+
+p2 = ggplot(
+    liv, aes(x=illness_period, y=Days)
+) + geom_point(alpha = 0.2) + stat_smooth(formula = y ~ x,
+    geom = 'area', method = 'loess', span = 1/2,
+    alpha = 1/2, fill = "#00afff") +
+    scale_x_continuous("Days",expand = c(0, 0))+
+    labs(title = "Recovery after X days")+
+    scale_y_continuous(expand = c(0, 0),limits = c(0,20))+theme_bw()+
+    theme(
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+
+grid.arrange(p1,p2,ncol=2)
+```
+
+
+## Interesting observations
+
+The figure represents correlation of High sensitivity C-reactive protein concentration to the outcome of infected person. These are one of the so-called acute phase proteins appearing in the blood as a consequence of inflammation. In a healthy person, the concentration is not high - no more than 5 mg/l and in fact it can be seen that most patients recovered have their concentration within limits while for the people that died, the concentration were much higher (around 18 times higher than normal level).
+
+The second one - eGFR  called glomerular filtration is a measurement of the amount of blood that gets filtered by the kidneys. Normally the result should be greater than or equal to 90 ml/min/1.73m2. For the people that died (both male and female cases) it can be seen that the level on average has dropped below the norm. For the "recovered" cases there is a big difference between gender - almost all female cases have value of eGFR witihin the norm, while the values for males vary greatly. Half of the cases are below norm and the other half is witihin it. It can suggest that based on the aquired data, the eGFR metric is much more accurate for female than male. 
+
+
+
+```{r echo=FALSE}
+data = read.csv('data_outliers_categ.csv', sep = ',')
+
+df = select(
+    data, "gender", "outcome", 
+    "High.sensitivity.C.reactive.protein",
+    "eGFR"
+)
+df = rename(
+    df, x="outcome", eGFR="eGFR", 
+    protein="High.sensitivity.C.reactive.protein",
+    hue="gender"
+)
+
+df = na.omit(df)
+
+GeomSplitViolin <- ggproto("GeomSplitViolin", GeomViolin, 
+   draw_group = function(self, data, ..., draw_quantiles = NULL) {
+       data <- transform(data, xminv = x - violinwidth * (x - xmin), xmaxv = x + violinwidth * (xmax - x))
+       grp <- data[1, "group"]
+       newdata <- plyr::arrange(transform(data, x = if (grp %% 2 == 1) xminv else xmaxv), if (grp %% 2 == 1) y else -y)
+       newdata <- rbind(newdata[1, ], newdata, newdata[nrow(newdata), ], newdata[1, ])
+       newdata[c(1, nrow(newdata) - 1, nrow(newdata)), "x"] <- round(newdata[1, "x"])
+       
+       if (length(draw_quantiles) > 0 & !scales::zero_range(range(data$y))) {
+           stopifnot(all(draw_quantiles >= 0), all(draw_quantiles <=
+                                                       1))
+           quantiles <- ggplot2:::create_quantile_segment_frame(data, draw_quantiles)
+           aesthetics <- data[rep(1, nrow(quantiles)), setdiff(names(data), c("x", "y")), drop = FALSE]
+           aesthetics$alpha <- rep(1, nrow(quantiles))
+           both <- cbind(quantiles, aesthetics)
+           quantile_grob <- GeomPath$draw_panel(both, ...)
+           ggplot2:::ggname("geom_split_violin", grid::grobTree(GeomPolygon$draw_panel(newdata, ...), quantile_grob))
+       }
+       else {
+           ggplot2:::ggname("geom_split_violin", GeomPolygon$draw_panel(newdata, ...))
+       }
+   })
+
+geom_split_violin <- function(mapping = NULL, data = NULL, stat = "ydensity", position = "identity", ..., 
+                              draw_quantiles = NULL, trim = TRUE, scale = "area", na.rm = FALSE, 
+                              show.legend = NA, inherit.aes = TRUE) {
+    layer(data = data, mapping = mapping, stat = stat, geom = GeomSplitViolin, 
+          position = position, show.legend = show.legend, inherit.aes = inherit.aes, 
+          params = list(trim = trim, scale = scale, draw_quantiles = draw_quantiles, na.rm = na.rm, ...))
+};
+
+v1 = ggplot(
+    df, aes(x, protein, fill = hue)
+) +
+    xlab('outcome') +
+    ylab('High sensitivity C-reactive protein') +
+    guides(fill = guide_legend(title = "Gender")) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), text = element_text(size=16)) +
+    scale_fill_manual(values = c('#5975A4', '#CD8964')) +
+    geom_split_violin(trim = F, scale = 'width');
+
+v2 = ggplot(
+    df, aes(x, eGFR, fill = hue)
+) +
+    xlab('outcome') +
+    ylab('eGFR') +
+    guides(fill = guide_legend(title = "Gender")) +
+    theme_bw() +
+    theme(axis.title.x = element_blank(), text = element_text(size=16)) +
+    scale_fill_manual(values = c('#5975A4', '#CD8964')) +
+    geom_split_violin(trim = F, scale = 'width');
+
+legend = gtable_filter(ggplotGrob(v1), "guide-box")
+
+grid.arrange(
+    arrangeGrob(
+        v1 + theme(legend.position="none"), 
+        v2 + theme(legend.position="none"),
+        nrow = 1
+    ),
+    legend, 
+    widths=unit.c(unit(1, "npc") - legend$width, legend$width), 
+    nrow=1
+)
+```
+
+
+## Possible causes of death
+The next set of visualizations represent the outcome of infected patients based on four metrics and their age. Dotted lines represent the range of normal values for given metric. We can observe that most patients with abnormal values are in advanced age - above 60 age. The concentration for all metric, for deceased patients, falls on average on 70 years. The effect of abnormal values on the outcome of a patient is particularly visible for Neutrophils and Lymphocyte metrics, where almost all patients with abnormal values are deceased and those within the norms are recovered. 
+
+
+
+```{r echo=FALSE}
+clean = read.csv("clean_data.csv",sep=",")
+clean = data.frame(clean)
+clean$outcome[clean$outcome == 1] = "Died"
+clean$outcome[clean$outcome == 0] = "Recovered"
+scatters = select(
+    clean, "age", "outcome", "neutrophils...",
+    "White.blood.cell.count", "Hypersensitive.cardiac.troponinI",
+    "X...lymphocyte"
+)
+scatters = rename(scatters, Outcome="outcome")
+neutrophils = drop_na(scatters)
+lymphocyte  = drop_na(scatters)
+White = subset(scatters, White.blood.cell.count < 40)
+troponin = subset(scatters, Hypersensitive.cardiac.troponinI < 50)
+
+p1 = ggplot(neutrophils, aes(x=neutrophils...,y=age,color=Outcome)) +
+    geom_point(alpha =0.7) + 
+    xlab("Neutrophils (%)") +
+    theme_bw() + 
+    scale_y_continuous(breaks = c(20, 40, 60, 80)) +
+    theme(
+        axis.title.y = element_blank(), 
+        axis.text.y = element_text(size=13),
+        axis.title.x = element_text(size=13),
+        axis.text.x = element_text(size=13)
+    ) +
+    geom_line(aes(x = 50), color = "black", alpha = 0.5, linetype = "dotted") +
+    scale_color_manual(values=c("#ff3921", "#00afff"))+
+    geom_line(aes(x = 75), color = "black", alpha = 0.5, linetype = "dotted")
+
+p2 = ggplot(White, aes(x=White.blood.cell.count,y=age,color=Outcome)) + 
+    geom_point(alpha =0.7) + 
+    xlab("White blood cell count") +
+    theme_bw() +
+    scale_y_continuous(breaks = c(20, 40, 60, 80)) +
+    theme(
+        axis.title.y = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), 
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=13)
+    ) +
+    geom_line(aes(x = 4), color = "black", alpha = 0.5, linetype = "dotted") + 
+    scale_color_manual(values=c("#ff3921", "#00afff"))+
+    geom_line(aes(x = 10), color = "black", alpha = 0.5, linetype = "dotted")
+
+p3 = ggplot(troponin, aes(x=Hypersensitive.cardiac.troponinI,y=age,color=Outcome)) + 
+    geom_point(alpha =0.7) + 
+    xlab("Hypersensitive cardiac troponin I") +
+    theme_bw() +
+    scale_y_continuous(breaks = c(20, 40, 60, 80)) +
+    theme(
+        axis.title.y = element_blank(), 
+        axis.text.y = element_text(size=13),
+        axis.title.x = element_text(size=13),
+        axis.text.x = element_text(size=13)
+    ) +
+    geom_line(aes(x = 0), color = "black", alpha = 0.5, linetype = "dotted") + 
+    scale_color_manual(values=c("#ff3921", "#00afff"))+
+    geom_line(aes(x = 4), color = "black", alpha = 0.5, linetype = "dotted")
+
+p4 = ggplot(lymphocyte, aes(x=X...lymphocyte,y=age,color=Outcome)) + 
+    geom_point(alpha =0.7) + 
+    xlab("Lymphocyte (%)") +
+    theme_bw() +
+    scale_y_continuous(breaks = c(20, 40, 60, 80)) +
+    theme(
+        axis.title.y = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(), 
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=13)
+    ) +
+    geom_line(aes(x = 10), color = "black", alpha = 0.5, linetype = "dotted") +  
+    scale_color_manual(values=c("#ff3921", "#00afff"))+
+    geom_line(aes(x = 45), color = "black", alpha = 0.5, linetype = "dotted")
+
+legend = gtable_filter(ggplotGrob(p1), "guide-box")
+
+grid.arrange(
+    arrangeGrob(
+        p1 + theme(legend.position="none"), 
+        p2 + theme(legend.position="none"),
+        p3 + theme(legend.position="none"),
+        p4 + theme(legend.position="none"), 
+        nrow = 2,
+        left = textGrob(
+            "Age", rot = 90, vjust = 1,
+            gp = gpar(fontsize = 16)
+        )
+    ),
+    
+    legend, 
+    widths=unit.c(unit(1, "npc") - legend$width, legend$width), 
+    nrow=1
+)
+```
+
+## Importance of Prothrombin
+
+Prothrombin is one of most important protein made in our body. It is known of crucial involvement in blood clotting (coagulation factor). In case of any injury Prothrombin works with other clotting factors to stop the bleeding.
+When our coagulation factor drops to low, it might cause a serious blood lose. But too high level may also be very harmful causing arteries or veins.
+
+
+### Prothrombin activity 
+
+Next useful metric is "Prothrombin activity". It is a protein factor responsible for the formation of thrombin; The percentage of the norm is in the range of 70-130%. Two groups can be observed - first with almost all values within the correct range (with some outliers) presenting recovered patients and the second one containing data from deceased patients (concentration of these values is around 60%). As with previous metrics, main group of abnormal values for prothrombin activity are people in advanced age.
+
+
+
+```{r echo=FALSE}
+clean = read.csv("clean_data.csv",sep=",")
+clean = data.frame(clean)
+clean$outcome[clean$outcome == 1] = "Died"
+clean$outcome[clean$outcome == 0] = "Recovered"
+scatters = select(clean, "age", "outcome","Prothrombin.activity")
+scatters = drop_na(scatters)
+p1 = ggplot(scatters, aes(x=age, y=Prothrombin.activity, color=outcome)) +
+    geom_point(alpha=0.5)+
+    scale_size(range = c(.1, 3), name="Prothrombin activity") +
+    xlab("Age")+
+    ylab("Prothrombin activity (%)") +
+    theme_bw()+
+    theme(legend.title = element_blank(),
+          axis.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=16))+
+    scale_color_manual(values=c("#ff3921", "#00afff"))+
+    geom_density_2d(alpha=.5)
+    
+ggplotly(p1)
+```
+
+
+### Prothrombin efficiency
+
+Below there is also a plot showing the density of amount of people recovered and deceased based on the prothrombin activity time. It is quite visible that most cases recovered have the activity of around 13.5 seconds while the activity time rises, the amount of recovered people drastically falls and mortality rises.
+
+
+
+```{r echo=FALSE}
+clean = read.csv("clean_data.csv",sep=",")
+clean = data.frame(clean)
+clean$outcome[clean$outcome == 1] = "Died"
+clean$outcome[clean$outcome == 0] = "Recovered"
+
+Prothrombin = select(clean, "age", "outcome","Prothrombin.time")%>%
+    filter(Prothrombin.time<25)%>%
+    drop_na(Prothrombin.time)
+
+p2 <- ggplot(Prothrombin, aes(x=Prothrombin.time,group =outcome,fill = outcome,color = outcome)) +
+    geom_density(alpha =.5) +
+    theme_bw()+
+    theme(legend.title = element_blank(),
+          axis.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=16))+
+    scale_color_manual(values=c("#ff3921", "#00afff"))+
+    scale_fill_manual(values=c("#ff3921", "#00afff"))+
+    xlab("Prothrombin activity [s]")+
+    ylab("Density")
+ggplotly(p2)
+```
+
+
+## International standard ratio (INR)
+
+The international normalized ratio (INR) is a standardized number, it is assumed that the norm is between 0.8-1.2.
+But the results of this test might be very dependent of the age, gender and heath history of the patient.
+In fact many factors may cause a deviation from the norm. From the data we are able o observe that patients who recovered from Covid-19 are very close to norms, however those who died oscillate between 1 to 5.
+
+```{r echo=FALSE}
+
+
+clean = read.csv("clean_data.csv",sep=",")
+clean = data.frame(clean)
+clean$outcome[clean$outcome == 1] = "Died"
+clean$outcome[clean$outcome == 0] = "Recovered"
+died = select(clean,"gender", "age", "outcome","International.standard.ratio")%>%
+    filter(outcome == "Died" & International.standard.ratio<5) %>%
+    drop_na(International.standard.ratio)
+
+
+recov = select(clean,"gender", "age", "outcome","International.standard.ratio")%>%
+    filter(outcome == "Recovered" & International.standard.ratio<5) %>%
+    drop_na(International.standard.ratio)
+p42 = ggplot(recov, aes(x=age, y=International.standard.ratio) ) +
+    geom_hex(bins = 20) +
+    theme_bw() +
+    theme(legend.title = element_text(size=13),
+          axis.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=16))+
+    xlab("Age")+
+    ylab("International standard ratio")+
+    labs(title = "RECOVERED")+
+    scale_fill_gradient(low = "#c2e6ff",high = "#00afff",name ="Count")
+
+
+ggplotly(p42)
+
+p0 = ggplot(died, aes(x=age, y=International.standard.ratio) ) +
+    geom_hex(bins = 20) +
+    theme_bw() +
+    theme(legend.title = element_text(size=13),
+          axis.text.y = element_text(size=13),
+        axis.text.x = element_text(size=13),
+        axis.title.x = element_text(size=16),
+        axis.title.y = element_text(size=16))+
+    xlab("Age")+
+    ylab("International standard ratio")+
+    labs(title = "DIED")+
+    scale_fill_gradient(low = "#ffbaba",high = "#ff3921",name ="Count")
+ggplotly(p0)
+
+
+```
+
+
+### Interesting findings
+
+It might be interesting that the PATIENT ID is very highly correlated to death, in fact all patients below id 200 recovered, while above all died.
+
+The graph below represents found phenomena. :)
+```{r echo=FALSE}
+clean = read.csv("reduced.csv",sep=",")
+clean = data.frame(clean)
+clean$outcome[clean$outcome == 1] = "Died"
+clean$outcome[clean$outcome == 0] = "Recovered"
+dat = select(clean,PATIENT_ID,outcome,age)
+
+p1 = ggplot(dat, aes(x=age, y=PATIENT_ID, color=outcome)) +
+    geom_point(alpha=0.5)+
+    scale_size(range = c(.1, 3), name="PATIENT_ID") +
+    xlab("Age")+
+    ylab("Patient ID") +
+    theme_bw()+
+    theme(legend.title = element_blank(),
+          axis.text.y = element_text(size=13),
+          axis.text.x = element_text(size=13),
+          axis.title.x = element_text(size=16),
+          axis.title.y = element_text(size=16))+
+    scale_color_manual(values=c("#ff3921", "#00afff"))
+ggplotly(p1)
+```
+
+
+<center>
+
+[meme :)](https://media.discordapp.net/attachments/719944268667682856/835659469097664573/EXmP6LeXgAA8eDP.png?width=521&height=675)
+
+</center>
